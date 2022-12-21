@@ -29,7 +29,7 @@ export const Editor = () => {
       // :
       EditorState.create({
         schema,
-        plugins: exampleSetup({ schema }),
+        // plugins: exampleSetup({ schema }),
       });
 
     const view = new EditorView(document.getElementById("editor"), {
