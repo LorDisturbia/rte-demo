@@ -1,15 +1,15 @@
 {
   "files": {
     "main.css": "/rte-demo/static/css/main.61242e12.css",
-    "main.js": "/rte-demo/static/js/main.1e6d3f34.js",
+    "main.js": "/rte-demo/static/js/main.9477f23f.js",
     "static/js/787.c4e7f8f9.chunk.js": "/rte-demo/static/js/787.c4e7f8f9.chunk.js",
     "index.html": "/rte-demo/index.html",
     "main.61242e12.css.map": "/rte-demo/static/css/main.61242e12.css.map",
-    "main.1e6d3f34.js.map": "/rte-demo/static/js/main.1e6d3f34.js.map",
+    "main.9477f23f.js.map": "/rte-demo/static/js/main.9477f23f.js.map",
     "787.c4e7f8f9.chunk.js.map": "/rte-demo/static/js/787.c4e7f8f9.chunk.js.map"
   },
   "entrypoints": [
     "static/css/main.61242e12.css",
-    "static/js/main.1e6d3f34.js"
+    "static/js/main.9477f23f.js"
   ]
 }
