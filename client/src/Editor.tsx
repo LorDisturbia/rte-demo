@@ -12,7 +12,7 @@ const docState = {
 };
 
 const wsProvider = new WebsocketProvider(
-  "ws://192.168.249.63:1234",
+  "wss://192.168.249.63:1234",
   "Follow LorDisturbia",
   doc
 );
