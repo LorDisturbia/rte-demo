@@ -1,8 +1,8 @@
 import { schema } from "prosemirror-schema-basic";
-import { EditorState, Transaction } from "prosemirror-state";
+import { EditorState, TextSelection, Transaction } from "prosemirror-state";
 import { EditorView } from "prosemirror-view";
 import { exampleSetup } from "prosemirror-example-setup";
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import * as Y from "yjs";
 import { WebsocketProvider } from "y-websocket";
 
@@ -12,30 +12,35 @@ const docState = {
 };
 
 const wsProvider = new WebsocketProvider(
-  "wss://104.154.53.223:5235",
-  "Follow LorDisturbia",
+  "wss://demos.yjs.dev/prosemirror-demo",
+  window.location.hostname === "localhost" ? "Test" : "Prod",
   doc
 );
 
-wsProvider.on("status", (event: any) => {
-  console.log(`Websocket status: ${event.status}`);
-});
-
 export const Editor = () => {
+  const [isConnected, setIsConnected] = useState(false);
+
   useEffect(() => {
-    const state =
-      // docState.content.toString() !== ""
-      // ? EditorState.fromJSON({ schema }, JSON.parse(sharedState.toString()))
-      // :
-      EditorState.create({
-        schema,
-        // plugins: exampleSetup({ schema }),
-      });
+    wsProvider.on("status", (event: any) => {
+      setIsConnected(event.status === "connected");
+    });
+  }, [isConnected]);
+
+  useEffect(() => {
+    const state = EditorState.create({
+      schema,
+      // plugins: exampleSetup({ schema }),
+    });
 
     const view = new EditorView(document.getElementById("editor"), {
       state,
       dispatchTransaction: (transaction: Transaction) => {
         const newState = view.state.apply(transaction);
+
+        console.log(
+          (transaction as any).curSelection.$from.pos,
+          (transaction as any).curSelection.$to.pos
+        );
         view.updateState(newState);
         console.log(
           "EditorChange:",
@@ -78,7 +83,6 @@ export const Editor = () => {
     });
 
     const observe = (event: Y.YTextEvent) => {
-      // if (docState.content.toString() === "") return;
       if (docState.content.toString() === view.state.doc.textContent) return;
 
       const transaction = view.state.tr.replaceWith(
@@ -88,7 +92,16 @@ export const Editor = () => {
           ? [state.schema.text(docState.content.toString())]
           : []
       );
+
+      // .replaceWith sets the selection to the end of the replaced range
+      // so we need to reset it to the previous selection
+      const previousSelection = view.state.selection;
+      const resolvedAnchor = transaction.doc.resolve(previousSelection.anchor);
+      const resolvedHead = transaction.doc.resolve(previousSelection.head);
+      transaction.setSelection(new TextSelection(resolvedAnchor, resolvedHead));
+
       const newState = view.state.apply(transaction);
+
       view.updateState(newState);
       console.log(
         "YjsChange:",
@@ -112,7 +125,7 @@ export const Editor = () => {
 
   return (
     <div>
-      <h1>Editor</h1>
+      <h1>{`Editor (${isConnected ? "Online" : "Offline"})`}</h1>
       <div id="editor" />
     </div>
   );
