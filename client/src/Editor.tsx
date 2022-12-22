@@ -46,6 +46,18 @@ const yjsAttributeToPmAttribute = (attribute: string) => {
   }
 };
 
+const getSliceContent = (slice: any) => {
+  if (slice.content) {
+    return slice.content.map((node: any) => {
+      if (node.text) {
+        return node.text as string;
+      }
+      return getSliceContent(node);
+    });
+  }
+  return "";
+};
+
 const syncDocuments = () => {
   const localState = Y.encodeStateVector(doc);
   const remoteState = Y.encodeStateVector(remoteDoc);
@@ -102,10 +114,11 @@ export const Editor = () => {
                     retain: jsonStep.from - 1,
                   });
                 }
-
-                if (jsonStep.slice && jsonStep.slice.content[0].text) {
+                const sliceContent =
+                  jsonStep.slice && getSliceContent(jsonStep.slice)[0];
+                if (sliceContent) {
                   delta.push({
-                    insert: jsonStep.slice.content[0].text,
+                    insert: sliceContent,
                   });
                 }
 
@@ -119,7 +132,7 @@ export const Editor = () => {
               case "addMark":
                 delta.push(
                   {
-                    retain: jsonStep.from,
+                    retain: jsonStep.from - 1,
                   },
                   {
                     retain: jsonStep.to - jsonStep.from,
@@ -164,10 +177,17 @@ export const Editor = () => {
       const transaction = view.state.tr;
       let currentPosition = 1;
       event.delta.forEach((step) => {
+        let stepText: string | undefined;
+        if (typeof step.insert === "string") {
+          stepText = step.insert;
+        } else if (step.insert instanceof Array) {
+          stepText = step.insert[0];
+        }
+
         if (step.retain) {
           for (const key in step.attributes) {
-            const markStart = currentPosition - 1;
-            const markEnd = currentPosition + step.retain - 1;
+            const markStart = currentPosition;
+            const markEnd = currentPosition + step.retain;
             if (step.attributes[key]) {
               transaction.addMark(
                 markStart,
@@ -184,11 +204,15 @@ export const Editor = () => {
           }
 
           currentPosition += step.retain;
-        } else if (typeof step.insert === "string") {
-          transaction.insertText(step.insert, currentPosition);
-          currentPosition += step.insert.length;
+        } else if (stepText) {
+          transaction.insertText(stepText, currentPosition);
+          currentPosition += stepText.length;
         } else if (step.delete) {
-          transaction.delete(currentPosition, currentPosition + step.delete);
+          const deleteEnd = Math.min(
+            currentPosition + step.delete,
+            view.state.doc.textContent.length + currentPosition + 1
+          );
+          transaction.delete(currentPosition, deleteEnd);
         }
       });
 
