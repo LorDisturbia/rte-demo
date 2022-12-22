@@ -20,6 +20,32 @@ const wsProvider = new WebsocketProvider(
   remoteDoc
 );
 
+const pmAttributeToYjsAttribute = (attribute: string) => {
+  switch (attribute) {
+    case "strong":
+      return "bold";
+    case "em":
+      return "italic";
+    case "code":
+      return "monospace";
+    default:
+      return attribute;
+  }
+};
+
+const yjsAttributeToPmAttribute = (attribute: string) => {
+  switch (attribute) {
+    case "bold":
+      return "strong";
+    case "italic":
+      return "em";
+    case "monospace":
+      return "code";
+    default:
+      return attribute;
+  }
+};
+
 const syncDocuments = () => {
   const localState = Y.encodeStateVector(doc);
   const remoteState = Y.encodeStateVector(remoteDoc);
@@ -43,7 +69,7 @@ export const Editor = () => {
   useEffect(() => {
     const state = EditorState.create({
       schema,
-      // plugins: exampleSetup({ schema }),
+      plugins: exampleSetup({ schema }),
     });
 
     const view = new EditorView(document.getElementById("editor"), {
@@ -90,6 +116,32 @@ export const Editor = () => {
                 }
 
                 break;
+              case "addMark":
+                delta.push(
+                  {
+                    retain: jsonStep.from,
+                  },
+                  {
+                    retain: jsonStep.to - jsonStep.from,
+                    attributes: {
+                      [pmAttributeToYjsAttribute(jsonStep.mark.type)]: true,
+                    },
+                  }
+                );
+                break;
+              case "removeMark":
+                delta.push(
+                  {
+                    retain: jsonStep.from,
+                  },
+                  {
+                    retain: jsonStep.to - jsonStep.from,
+                    attributes: {
+                      [pmAttributeToYjsAttribute(jsonStep.mark.type)]: false,
+                    },
+                  }
+                );
+                break;
             }
             console.log(
               "Doc change detected",
@@ -105,15 +157,6 @@ export const Editor = () => {
     });
 
     const observe = (event: Y.YTextEvent) => {
-      if (docState.content.toString() === view.state.doc.textContent) return;
-
-      const transaction = view.state.tr.replaceWith(
-        0,
-        view.state.doc.content.size,
-        docState.content.toString() !== ""
-          ? [state.schema.text(docState.content.toString())]
-          : []
-      );
       syncDocuments();
       if (event instanceof Uint8Array) return;
       if (event.transaction.local) return;
@@ -122,12 +165,22 @@ export const Editor = () => {
       let currentPosition = 1;
       event.delta.forEach((step) => {
         if (step.retain) {
-          if (step.attributes?.bold) {
-            const boldStart = currentPosition;
-            const boldEnd = currentPosition + step.retain;
-
-            // TODO: Apply styling
-            console.log(`Bold from ${boldStart} to ${boldEnd}`);
+          for (const key in step.attributes) {
+            const markStart = currentPosition - 1;
+            const markEnd = currentPosition + step.retain - 1;
+            if (step.attributes[key]) {
+              transaction.addMark(
+                markStart,
+                markEnd,
+                view.state.schema.marks[yjsAttributeToPmAttribute(key)].create()
+              );
+            } else {
+              transaction.removeMark(
+                markStart,
+                markEnd,
+                view.state.schema.marks[yjsAttributeToPmAttribute(key)].create()
+              );
+            }
           }
 
           currentPosition += step.retain;
