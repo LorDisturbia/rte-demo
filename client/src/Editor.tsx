@@ -7,15 +7,27 @@ import * as Y from "yjs";
 import { WebsocketProvider } from "y-websocket";
 
 const doc = new Y.Doc();
+const remoteDoc = new Y.Doc();
 const docState = {
   content: doc.getText("content"),
 };
 
+const isLocal = window.location.hostname === "localhost";
+
 const wsProvider = new WebsocketProvider(
-  "wss://demos.yjs.dev/prosemirror-demo",
-  window.location.hostname === "localhost" ? "Test" : "Prod",
-  doc
+  isLocal ? "ws://192.168.1.146:1234" : "wss://demos.yjs.dev/prosemirror-demo",
+  "test5",
+  remoteDoc
 );
+
+const syncDocuments = () => {
+  const localState = Y.encodeStateVector(doc);
+  const remoteState = Y.encodeStateVector(remoteDoc);
+  const localDiff = Y.encodeStateAsUpdate(doc, remoteState);
+  const remoteDiff = Y.encodeStateAsUpdate(remoteDoc, localState);
+  Y.applyUpdate(doc, remoteDiff);
+  Y.applyUpdate(remoteDoc, localDiff);
+};
 
 export const Editor = () => {
   const [isConnected, setIsConnected] = useState(false);
@@ -23,8 +35,10 @@ export const Editor = () => {
   useEffect(() => {
     wsProvider.on("status", (event: any) => {
       setIsConnected(event.status === "connected");
+      console.log(event.status);
+      syncDocuments();
     });
-  }, [isConnected]);
+  }, []);
 
   useEffect(() => {
     const state = EditorState.create({
@@ -50,34 +64,42 @@ export const Editor = () => {
           view.state.doc.textContent || "<empty>"
         );
 
-        transaction.steps.forEach((step) => {
-          const jsonStep = step.toJSON();
-          console.log(`Sending update: ${JSON.stringify(jsonStep)}`);
-          switch (jsonStep.stepType) {
-            case "replace":
-              const delta = [];
+        doc.transact(() => {
+          transaction.steps.forEach((step) => {
+            const jsonStep = step.toJSON();
 
-              if (jsonStep.from > 0) {
-                delta.push({
-                  retain: jsonStep.from - 1,
-                });
-              }
+            const delta: any[] = [];
+            switch (jsonStep.stepType) {
+              case "replace":
+                if (jsonStep.from > 1) {
+                  delta.push({
+                    retain: jsonStep.from - 1,
+                  });
+                }
 
-              if (jsonStep.slice && jsonStep.slice.content[0].text) {
-                delta.push({
-                  insert: jsonStep.slice.content[0].text,
-                });
-              }
+                if (jsonStep.slice && jsonStep.slice.content[0].text) {
+                  delta.push({
+                    insert: jsonStep.slice.content[0].text,
+                  });
+                }
 
-              if (jsonStep.to - jsonStep.from >= 0) {
-                delta.push({
-                  delete: jsonStep.to - jsonStep.from,
-                });
-              }
+                if (jsonStep.to - jsonStep.from > 0) {
+                  delta.push({
+                    delete: jsonStep.to - jsonStep.from,
+                  });
+                }
 
-              docState.content.applyDelta(delta);
-              break;
-          }
+                break;
+            }
+            console.log(
+              "Doc change detected",
+              "\nConverting the following step: ",
+              jsonStep,
+              "\nTo the following delta: ",
+              delta
+            );
+            docState.content.applyDelta(delta);
+          });
         });
       },
     });
@@ -92,6 +114,30 @@ export const Editor = () => {
           ? [state.schema.text(docState.content.toString())]
           : []
       );
+      syncDocuments();
+      if (event instanceof Uint8Array) return;
+      if (event.transaction.local) return;
+
+      const transaction = view.state.tr;
+      let currentPosition = 1;
+      event.delta.forEach((step) => {
+        if (step.retain) {
+          if (step.attributes?.bold) {
+            const boldStart = currentPosition;
+            const boldEnd = currentPosition + step.retain;
+
+            // TODO: Apply styling
+            console.log(`Bold from ${boldStart} to ${boldEnd}`);
+          }
+
+          currentPosition += step.retain;
+        } else if (typeof step.insert === "string") {
+          transaction.insertText(step.insert, currentPosition);
+          currentPosition += step.insert.length;
+        } else if (step.delete) {
+          transaction.delete(currentPosition, currentPosition + step.delete);
+        }
+      });
 
       // .replaceWith sets the selection to the end of the replaced range
       // so we need to reset it to the previous selection
@@ -113,6 +159,7 @@ export const Editor = () => {
     };
 
     docState.content.observe(observe);
+    remoteDoc.on("update", observe);
 
     // The focus is lost on rerender so it needs to be manually restored
     view.focus();
@@ -120,6 +167,7 @@ export const Editor = () => {
     return () => {
       view.destroy();
       docState.content.unobserve(observe);
+      remoteDoc.off("update", observe);
     };
   }, []);
 
